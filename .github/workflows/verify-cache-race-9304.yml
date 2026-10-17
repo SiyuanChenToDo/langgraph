@@ -1,0 +1,37 @@
+name: Reproduce LangGraph concurrent-cache issue 9304
+
+on:
+  push:
+    branches:
+      - verification/langgraph-concurrent-cache-9304
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ./libs/langgraph
+      - name: Expect the reported concurrency race on unpatched main
+        shell: bash
+        run: |
+          set +e
+          python research_repros/issue_9304_concurrent_cache.py > /tmp/langgraph-repro.log 2>&1
+          result=$?
+          set -e
+          cat /tmp/langgraph-repro.log
+          if [ "$result" -eq 0 ]; then
+            echo "No race observed in 20 trials; this is inconclusive and needs follow-up."
+            exit 1
+          fi
+          if ! grep -q 'dictionary changed size during iteration' /tmp/langgraph-repro.log; then
+            echo "Only unrelated failures observed; do not count as a reproduction."
+            exit 1
+          fi
+          echo "Expected upstream race was reproduced (diagnostic only)."
